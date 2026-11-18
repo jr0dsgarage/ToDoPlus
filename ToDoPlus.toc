@@ -1,0 +1,20 @@
+## Interface: 120007, 120100, 16001
+## Title: ToDo|cff00ff00Plus|r
+## Notes: A movable, resizable to-do list with categories and checklist items
+## Author: jr0dsgarage
+## Version: 0.1.0
+## Category-enUS: j__r0d's garage
+## SavedVariables: ToDoPlusDB
+## SavedVariablesPerCharacter: ToDoPlusCharDB
+## OptionalDeps: LibSharedMedia-3.0
+## IconTexture: Interface\Icons\INV_Misc_Note_01
+
+Database.lua
+Core.lua
+SettingsWidgets.lua
+UI/PanelMedia.lua
+UI/Panel.lua
+UI/ListView.lua
+UI/Markdown.lua
+UI/DataBroker.lua
+Settings.lua
