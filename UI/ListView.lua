@@ -47,26 +47,6 @@ end
 
 local REMOVE_TEXTURE = FirstExisting("Interface\\RaidFrame\\ReadyCheck-NotReady", "Interface\\Buttons\\UI-GroupLoot-Pass-Up")
 
-local function AtlasExists(atlas)
-    return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) ~= nil
-end
-
-local COLLAPSE_ATLAS = "UI-QuestTrackerButton-Secondary-Collapse"
-local EXPAND_ATLAS = "UI-QuestTrackerButton-Secondary-Expand"
-local HAS_TRACKER_ATLAS = AtlasExists(COLLAPSE_ATLAS) and AtlasExists(EXPAND_ATLAS)
-
-local function SetCollapseArt(button, collapsed)
-    if HAS_TRACKER_ATLAS then
-        local atlas = collapsed and EXPAND_ATLAS or COLLAPSE_ATLAS
-        button:SetNormalAtlas(atlas)
-        button:SetPushedAtlas(atlas)
-    else
-        local base = collapsed and "Interface\\Buttons\\UI-PlusButton-" or "Interface\\Buttons\\UI-MinusButton-"
-        button:SetNormalTexture(base .. "Up")
-        button:SetPushedTexture(base .. "Down")
-    end
-end
-
 -------------------------------------------------------------------------------
 -- Strikethrough
 --
@@ -499,7 +479,7 @@ local function CreateAddRow()
     end)
 
     local plus = row:CreateTexture(nil, "ARTWORK")
-    plus:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+    addon:SetPlusArt(plus)
     row.plus = plus
 
     local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -655,7 +635,7 @@ local function PlaceCategory(category, y, width, m)
     local toggle = row.toggle
     toggle:ClearAllPoints()
     toggle:SetPoint("LEFT", row, "TOPLEFT", 0, middle)
-    SetCollapseArt(toggle, category.collapsed)
+    addon:SetCollapseArt(toggle, category.collapsed)
 
     local nameLeft = COLLAPSE_SIZE + 4
     local nameWidth = math.max(20, width - nameLeft - m.removeSize - REMOVE_GAP - 2)
@@ -809,7 +789,8 @@ end
 
 function addon:RenderList()
     if not content or rendering then return end
-    if not self.panel:IsShown() then return end -- redrawn on show
+    -- Redrawn when the panel is shown or rolled back down.
+    if not self.panel:IsShown() or self.db.rolledUp then return end
     rendering = true
 
     if editing and not EditingTargetValid() then
@@ -832,9 +813,24 @@ function addon:RenderList()
     if dropped then self:UpdateEditMode() end
 end
 
--- Edit mode: the modifier is held while the panel is up, or a text box is open.
+-- Clears every row's text so the layout sets it afresh: a font string set before its
+-- font file loaded stays blank until its text changes (see PreloadFonts in Panel.lua).
+function addon:RedrawListText()
+    if not content then return end
+    for _, pool in pairs(pools) do
+        for _, row in ipairs(pool.frames) do
+            if row.text then row.text:SetText("") end
+            if row.label then row.label:SetText("") end
+        end
+    end
+    hint:SetText("")
+    measurer:SetText("")
+    self:RenderList()
+end
+
+-- Edit mode: the modifier is held while the list is in view, or a text box is open.
 function addon:UpdateEditMode()
-    local on = editing ~= nil or (self:IsPanelShown() and self:IsEditModifierDown())
+    local on = editing ~= nil or (self:IsListShown() and self:IsEditModifierDown())
     if on ~= editMode then
         editMode = on
         self:RenderList()

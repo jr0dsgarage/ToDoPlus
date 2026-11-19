@@ -92,6 +92,18 @@ function addon:SetLocked(locked)
     self:NotifyStateChanged()
 end
 
+-- Shown and not rolled up: the list itself is in view.
+function addon:IsListShown()
+    return self:IsPanelShown() and not self.db.rolledUp
+end
+
+-- Rolled up, only the title bar shows.
+function addon:SetRolledUp(rolledUp)
+    self.db.rolledUp = rolledUp and true or false
+    if self.UpdateRollUp then self:UpdateRollUp() end
+    self:NotifyStateChanged()
+end
+
 -- "account" or "character"
 function addon:SetActiveList(key)
     if key ~= "character" then key = "account" end
@@ -131,6 +143,8 @@ local function RegisterSlashCommands()
             addon:SetLocked(true)
         elseif cmd == "unlock" then
             addon:SetLocked(false)
+        elseif cmd == "roll" then
+            addon:SetRolledUp(not addon.db.rolledUp)
         elseif cmd == "account" or cmd == "character" then
             addon:SetActiveList(cmd)
             addon.Print("Showing the " .. addon:GetActiveListName():lower() .. " list.")
@@ -147,6 +161,7 @@ local function RegisterSlashCommands()
         else
             addon.Print("/todo - show or hide the to-do list")
             addon.Print("/todo lock | unlock - stop or allow moving and resizing")
+            addon.Print("/todo roll - roll the list up to its title bar, or back down")
             addon.Print("/todo account | character - switch lists")
             addon.Print("/todo export | import - copy the list as Markdown, or paste one in")
             addon.Print("/todo config - open settings")
@@ -162,11 +177,13 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 == addonName then
             addon:InitDatabase()
+            addon:PreloadFonts() -- start loading the chosen fonts before the panel needs them
             RegisterSlashCommands()
             self:UnregisterEvent("ADDON_LOADED")
         end
     elseif event == "PLAYER_LOGIN" then
         addon:CreatePanel()
+        addon:ScheduleTextRedraw() -- text set before a font file arrived shows blank
         self:RegisterEvent("MODIFIER_STATE_CHANGED")
     elseif event == "MODIFIER_STATE_CHANGED" then
         addon:UpdateEditMode()

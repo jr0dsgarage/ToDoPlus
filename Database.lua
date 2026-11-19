@@ -16,6 +16,7 @@ local DEFAULTS = {
     -- Behavior
     hidden = false,
     locked = false,
+    rolledUp = false, -- only the title bar shows
     modifier = "CTRL",
 
     -- Frame. position is { point, relativePoint, x, y }; unset centers the panel.

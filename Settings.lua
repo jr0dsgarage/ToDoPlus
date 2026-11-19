@@ -499,6 +499,10 @@ local function InitUI()
         "Stop the panel from being moved or resized. The list can still be checked off and edited. Also toggled by the padlock in the panel's title bar.", leftY,
         KeyGet("locked"),
         function(checked) addon:SetLocked(checked) end)
+    leftY = CreateCheckbox(left, "Roll Up", "rolledUp",
+        "Hide the list, leaving just the panel's title bar. Also toggled by the -/+ button at the right end of the title bar.", leftY,
+        KeyGet("rolledUp"),
+        function(checked) addon:SetRolledUp(checked) end)
     leftY = CreateButton(left, "Reset All Settings", 150,
         "Put every setting back to its default and reload the UI. Your lists are kept.", leftY - 5,
         function() StaticPopup_Show("TODOPLUS_RESET_CONFIRM") end)

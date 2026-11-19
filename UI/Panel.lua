@@ -19,6 +19,7 @@ local LIST_INSET_PLAIN = 6
 local LIST_INSET_SCROLLBAR = 20
 
 local FALLBACK_FONT = "Fonts\\FRIZQT__.TTF"
+local TITLE_TEXT = "To-Do List"
 
 local panel, scrollFrame, content
 
@@ -35,6 +36,67 @@ function addon:ApplyFont(fontString, path, size)
     local flags = self:GetFontFlags()
     if type(path) ~= "string" or fontString:SetFont(path, size, flags) == false then
         fontString:SetFont(FALLBACK_FONT, size, flags)
+    end
+end
+
+-- Font files from other addons (FontMagic, SharedMedia, ...) load in the background
+-- on a fresh start of the game. Text set before its font has arrived stays blank,
+-- even after the font loads, until the text is set again. (A /reload never shows
+-- this: the files are already loaded by then.)
+--
+-- So the chosen fonts are asked for as soon as the addon loads, and the panel's text
+-- is set afresh a few times in the seconds after login (ScheduleTextRedraw).
+local fontLoader
+function addon:PreloadFonts()
+    if not fontLoader then
+        fontLoader = CreateFrame("Frame", nil, UIParent)
+        fontLoader:SetSize(1, 1)
+        fontLoader:SetPoint("TOPLEFT")
+        fontLoader:SetAlpha(0)
+        fontLoader.strings = {}
+    end
+    local db = self.db
+    local paths = { db.titleFont, db.categoryFont, db.itemFont }
+    for i = 1, 3 do
+        local fs = fontLoader.strings[i]
+        if not fs then
+            fs = fontLoader:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+            fs:SetPoint("TOPLEFT")
+            fontLoader.strings[i] = fs
+        end
+        self:ApplyFont(fs, paths[i], 12)
+        fs:SetText("Ag")
+    end
+end
+
+-- The game's quest tracker -/+ buttons (as on TrackerPlus), or the plain -/+ buttons
+-- on a client without that art. Used by the roll-up button and category headers.
+local function AtlasExists(atlas)
+    return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) ~= nil
+end
+
+local COLLAPSE_ATLAS = "UI-QuestTrackerButton-Secondary-Collapse"
+local EXPAND_ATLAS = "UI-QuestTrackerButton-Secondary-Expand"
+local HAS_TRACKER_ATLAS = AtlasExists(COLLAPSE_ATLAS) and AtlasExists(EXPAND_ATLAS)
+
+function addon:SetCollapseArt(button, collapsed)
+    if HAS_TRACKER_ATLAS then
+        local atlas = collapsed and EXPAND_ATLAS or COLLAPSE_ATLAS
+        button:SetNormalAtlas(atlas)
+        button:SetPushedAtlas(atlas)
+    else
+        local base = collapsed and "Interface\\Buttons\\UI-PlusButton-" or "Interface\\Buttons\\UI-MinusButton-"
+        button:SetNormalTexture(base .. "Up")
+        button:SetPushedTexture(base .. "Down")
+    end
+end
+
+-- The same + art on a plain texture (the list's add rows).
+function addon:SetPlusArt(texture)
+    if HAS_TRACKER_ATLAS then
+        texture:SetAtlas(EXPAND_ATLAS)
+    else
+        texture:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
     end
 end
 
@@ -170,8 +232,24 @@ local function CreateHeader()
     header:SetHeight(HEADER_H)
     panel.header = header
 
-    -- Chrome buttons, right to left: settings, lock, list switch.
-    local settingsBtn = CreateChromeButton(-6, function() return "Open Settings" end)
+    -- Chrome buttons, right to left: roll up, settings, lock, list switch.
+
+    -- Roll up / down: the quest tracker's -/+ button, at TrackerPlus's size and spot.
+    local rollBtn = CreateChromeButton(-5, function()
+        if addon.db.rolledUp then
+            return "Roll Down", "Show the list again."
+        end
+        return "Roll Up", "Hide the list, leaving just this title bar."
+    end)
+    rollBtn:SetSize(24, 24)
+    rollBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+    rollBtn:SetScript("OnClick", function(self)
+        addon:SetRolledUp(not addon.db.rolledUp)
+        RefreshTooltip(self)
+    end)
+    panel.rollBtn = rollBtn
+
+    local settingsBtn = CreateChromeButton(-34, function() return "Open Settings" end)
     settingsBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
     settingsBtn:SetScript("OnClick", function()
         if addon.OpenSettings then addon.OpenSettings() end
@@ -179,7 +257,7 @@ local function CreateHeader()
     panel.settingsBtn = settingsBtn
 
     -- Padlock: gold when locked, grey when unlocked (tinted by UpdatePanelLock).
-    local lockBtn = CreateChromeButton(-26, function()
+    local lockBtn = CreateChromeButton(-54, function()
         if addon.db.locked then
             return "Unlock Panel", "Allow moving and resizing the panel."
         end
@@ -196,7 +274,7 @@ local function CreateHeader()
     panel.lockBtn = lockBtn
 
     -- List switch: "A" for the account-wide list, "C" for this character's.
-    local listBtn = CreateChromeButton(-46, function()
+    local listBtn = CreateChromeButton(-74, function()
         if addon:GetActiveListKey() == "character" then
             return "Character List", "Only this character sees this list.\nClick to show the account list, shared by all your characters."
         end
@@ -219,15 +297,16 @@ local function CreateHeader()
     title:SetPoint("RIGHT", listBtn, "LEFT", -4, 0)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
-    title:SetText("To-Do List")
+    title:SetText(TITLE_TEXT)
     panel.title = title
 
-    -- A faint rule under the title bar.
+    -- A faint rule under the title bar, between it and the list (hidden rolled up).
     local rule = header:CreateTexture(nil, "ARTWORK")
     rule:SetColorTexture(1, 1, 1, 0.12)
     rule:SetHeight(1)
     rule:SetPoint("BOTTOMLEFT", 6, 0)
     rule:SetPoint("BOTTOMRIGHT", -6, 0)
+    panel.headerRule = rule
 end
 
 function addon:UpdateHeaderButtons()
@@ -244,8 +323,10 @@ end
 function addon:UpdatePanelLock()
     if not panel then return end
     local locked = self.db.locked
-    panel.resizeBR:SetShown(not locked)
-    panel.resizeBL:SetShown(not locked)
+    -- Nothing to resize while rolled up, either.
+    local canResize = not locked and not self.db.rolledUp
+    panel.resizeBR:SetShown(canResize)
+    panel.resizeBL:SetShown(canResize)
     if locked and activeDrag then
         if activeDrag == "move" then self:StopPanelMove() else StopPanelSizing() end
     end
@@ -257,6 +338,43 @@ function addon:UpdatePanelLock()
     else
         lockTex:SetVertexColor(0.6, 0.6, 0.6, 1)
     end
+end
+
+-- The panel's height: the saved one, or just the title bar while rolled up.
+local function PanelHeight()
+    return addon.db.rolledUp and HEADER_H or addon.db.height
+end
+
+-- Drag-resizing can't make the panel smaller than this (it can't drag-resize at all
+-- rolled up, but the limit is lowered then so it never fights the title-bar height).
+local function SetMinimumSize(width, height)
+    if panel.SetResizeBounds then
+        panel:SetResizeBounds(width, height)
+    elseif panel.SetMinResize then
+        panel:SetMinResize(width, height)
+    end
+end
+
+-- Rolled up: only the title bar shows, its top edge staying where it was (the panel
+-- is anchored by its top-left corner). The saved height is kept for rolling back down.
+function addon:UpdateRollUp()
+    if not panel then return end
+    local rolledUp = self.db.rolledUp
+
+    if rolledUp then
+        if activeDrag == "size" then StopPanelSizing() end
+        if self.CancelInlineEdit then self:CancelInlineEdit() end
+    end
+
+    SetMinimumSize(MIN_WIDTH, rolledUp and HEADER_H or MIN_HEIGHT)
+    panel:SetHeight(PanelHeight())
+    scrollFrame:SetShown(not rolledUp)
+    panel.headerRule:SetShown(not rolledUp)
+    self:SetCollapseArt(panel.rollBtn, rolledUp)
+    self:UpdatePanelLock() -- the resize grips
+
+    self:UpdateEditMode()
+    self:RenderList()
 end
 
 -- Background, border, size, scale and title font, from the settings.
@@ -316,7 +434,7 @@ function addon:UpdatePanelAppearance()
     end
 
     if activeDrag ~= "size" then
-        panel:SetSize(db.width, db.height)
+        panel:SetSize(db.width, PanelHeight())
     end
 
     self:ApplyFont(panel.title, db.titleFont, db.titleFontSize)
@@ -339,11 +457,31 @@ end
 function addon:ApplyAllSettings()
     if not panel then return end
     self:UpdatePanelAppearance()
-    self:UpdatePanelLock()
     panel:SetShown(not self.db.hidden)
-    self:UpdateEditMode()
-    self:RenderList()
+    self:UpdateRollUp() -- also the lock state, edit mode and the list
     self:NotifyStateChanged()
+end
+
+-- Sets all of the panel's text afresh, in case a font finished loading after the
+-- text was set (see PreloadFonts).
+function addon:RedrawText()
+    if not panel then return end
+    self:ApplyFont(panel.title, self.db.titleFont, self.db.titleFontSize)
+    panel.title:SetText("")
+    panel.title:SetText(TITLE_TEXT)
+    panel.listBtn.text:SetText("")
+    self:UpdateHeaderButtons()
+    self:RedrawListText()
+end
+
+-- After login. Font files usually arrive within a moment; the later passes are for
+-- a slow disk.
+local REDRAW_DELAYS = { 0.5, 2, 5 }
+
+function addon:ScheduleTextRedraw()
+    for _, delay in ipairs(REDRAW_DELAYS) do
+        C_Timer.After(delay, function() addon:RedrawText() end)
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -355,18 +493,14 @@ function addon:CreatePanel()
 
     panel = CreateFrame("Frame", "ToDoPlusFrame", UIParent)
     self.panel = panel
-    panel:SetSize(self.db.width, self.db.height)
+    panel:SetSize(self.db.width, PanelHeight())
     panel:SetScale(self.db.scale or 1)
     panel:SetFrameStrata("MEDIUM")
     panel:SetToplevel(true)
     panel:SetClampedToScreen(true)
     panel:SetMovable(true)
     panel:SetResizable(true)
-    if panel.SetResizeBounds then
-        panel:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT)
-    elseif panel.SetMinResize then
-        panel:SetMinResize(MIN_WIDTH, MIN_HEIGHT)
-    end
+    SetMinimumSize(MIN_WIDTH, MIN_HEIGHT) -- lowered by UpdateRollUp while rolled up
     -- Our own saved position is the one used, not the client's layout cache.
     if panel.SetDontSavePosition then panel:SetDontSavePosition(true) end
     RestorePosition()
@@ -419,10 +553,9 @@ function addon:CreatePanel()
 
     self:CreateListView(content)
     self:UpdatePanelAppearance()
-    self:UpdatePanelLock()
     self:UpdateHeaderButtons()
     panel:SetShown(not self.db.hidden)
-    self:RenderList()
+    self:UpdateRollUp() -- also the lock state, and draws the list unless rolled up
     self:NotifyStateChanged()
 
     return panel

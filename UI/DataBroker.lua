@@ -24,6 +24,8 @@ local function StatusText()
         return "|cff808080Loading|r"
     elseif addon.db.hidden then
         return "|cffff8040Hidden|r"
+    elseif addon.db.rolledUp then
+        return "|cffffd100Rolled Up|r"
     end
     return "|cff40ff40Shown|r"
 end

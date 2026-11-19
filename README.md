@@ -18,6 +18,7 @@ A to-do list for World of Warcraft, in a panel you can move, resize and style. T
 ### The panel
 
 - Drag to move, and resize from either bottom corner. The padlock in the title bar locks the panel in place; the list can still be checked off and edited.
+- The **-** button at the right of the title bar rolls the list up, leaving just the title bar; **+** rolls it back down.
 - Background and border textures (the game's own, plus anything registered with LibSharedMedia), with colors and border size.
 - Fonts, sizes, outline and colors for the title, categories and items, and a color for completed items.
 
@@ -44,6 +45,7 @@ A launcher for Titan Panel and other LibDataBroker displays: click it to show or
 | --- | --- |
 | `/todo` | Show or hide the list |
 | `/todo lock`, `/todo unlock` | Stop or allow moving and resizing |
+| `/todo roll` | Roll the list up to its title bar, or back down |
 | `/todo account`, `/todo character` | Switch lists |
 | `/todo export`, `/todo import` | Copy the list as Markdown, or paste one in |
 | `/todo config` | Open settings |
